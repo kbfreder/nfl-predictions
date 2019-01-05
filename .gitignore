@@ -71,6 +71,8 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*Copy*.ipynb
+Purgatory/
 
 # pyenv
 .python-version

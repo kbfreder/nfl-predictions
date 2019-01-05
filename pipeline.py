@@ -6,6 +6,7 @@ import re
 from selenium.common.exceptions import NoSuchElementException
 from collections import defaultdict
 import csv
+import datetime as dt
 
 url_base = 'https://www.pro-football-reference.com'
 week_conv_dict = {'Wild Card':18, 'Division':19, 'Conf. Champ.':20, 'SuperBowl':21}
@@ -16,6 +17,11 @@ def save_dict_txt(filename, d):
         f.write(str(d))
         f.close()
 
+
+def save_dict_txt(filename, d):
+    with open(filename,"w") as f:
+        f.write(str(d))
+        f.close()
 
 def init_scraping():
     bxsc_hmtl = {}    # [href] = html .also tracks whether a bxsc href has been visited
@@ -67,10 +73,9 @@ def row_split(row,i):
     return int(row.split('-')[i])
 
 
-def get_season_data(team_url, year, count, driver):
+def get_season_data(team_url, year, driver):
     '''team_url (str): team abbreviation used in PFR url (ex: 'chi')
     year (int): season year
-    count (int): count of number of times driver has been called
     driver: Selenium WebDriver
     '''
     url = url_base + '/teams/' + team_url + '/' + str(year) + '.htm'
@@ -79,16 +84,17 @@ def get_season_data(team_url, year, count, driver):
 
     try:
         driver.get(url)
-        # time.sleep(3 + count//2)
         time.sleep(3)
         target_id = "all_games"
 
         try:
             webel = driver.find_element_by_id(target_id)
-            print('Page loaded & data found!')
+            # print('Page loaded & data found!')
 
             html = webel.get_attribute('outerHTML')
-            fname = 'SeasonHtmls/' + team_url + '-' + str(year) + '-html.pkl'
+
+            # save as back-up
+            fname = 'Data/SeasonHtmls/' + team_url + '-' + str(year) + '-html.pkl'
             pkl_this(fname, html)
             return html
 
@@ -110,6 +116,17 @@ def get_href_list(html):
     return href_list
 
 
+def convert_date(row):
+    '''
+        Helper function for clean_season_data
+    '''
+    # raw Date is 'September 9' format. If Date occurs after Dec 31, calendar year = season year + 1
+    if (row['NaiveDate'] >= dt.datetime(1900,1,1)) & (row['NaiveDate'] < dt.datetime(1900,3,1)):
+        return pd.to_datetime((row['Date'] + ', ' + str(row['Year'] + 1)), format='%B %d, %Y')
+    else:
+        return pd.to_datetime((row['Date'] + ', ' + str(row['Year'])), format='%B %d, %Y')
+
+
 def clean_season_data(html, team, year):
     df = pd.read_html(html)[0]
 
@@ -125,9 +142,6 @@ def clean_season_data(html, team, year):
     cols1 = ['Week','Day','Date','Time','bs','Result','OT','Record','Location','Opp','PtsTm','PtsOpp']
     col_list_final = cols1 + col_list_flat[-(len(cols1)+1):]
 
-    # cols2 = ['OExpPts','DExpPts', 'StExpPts']
-    # col_list_final = col_list_final[:-len(cols2)] + cols2
-
     # labe the first '1stD' column to distinguish it and allow us to find the second set of these columns
     st = col_list_final.index('1stD')
     col_list_final[st] += '-O'
@@ -142,16 +156,27 @@ def clean_season_data(html, team, year):
     df['Year'] = year
     cols_to_drop = ['1stD-D', 'TotY-D', 'PassY-D', 'RushY-D', 'Offens', 'Defens', 'Sp. Tms']
     df.drop(cols_to_drop, axis=1, inplace=True)
-    # df.rename(columns={'1stDO-O':'1stD','TO-O': 'TO', 'TO-D':'DefTO'},inplace=True)   # can do this later
 
-    # convert week to integers, drop na's
-    # Week = na when it's the Playoffs and team didn't make it
-    # bs = na when team is on Bye Week
+    # drop na's
+        # Week = na when it's the Playoffs and team didn't make it
+        # bs = na when team is on Bye Week
     df.dropna(axis=0, subset=['Week','bs'], inplace=True)
+
+    # convert week to integer
     df['Week'] = df['Week'].apply(lambda x: week_conv_dict[x] if x in week_conv_dict else int(x))
 
-    fname = '../SeasonDfs/season_' + team + '-' + str(year) + '.pkl'
-    pkl_this(fname, df)
+    # incorporated 01/04/19
+    # df['Time'] = pd.to_datetime(df['Time']).dt.time
+    df['Conv_Time'] = pd.to_datetime(df['Time'], utc=False).dt.time
+    df['NaiveDate'] = pd.to_datetime(df['Date'] , format='%B %d')
+    df['Date'] = df.apply(lambda row: convert_date(row), axis=1)
+    df.drop(columns=['NaiveDate', 'bs', 'Time'], inplace=True)
+
+    df.rename(columns={'1stDO-O':'1stD', 'TO-D':'DefTO', 'Conv_Time': 'Time'},inplace=True)   # can do this later
+
+    # save a back-up copy by team and year
+    # fname = '../SeasonDfs/season_' + team + '-' + str(year) + '.pkl'
+    # pkl_this(fname, df)
 
     return df
 
@@ -175,7 +200,7 @@ def get_bxsc_data(href, driver):
 
 
 
-def clean_bxsc_data(html,week, year):
+def clean_bxsc_data(html, week, year):
     hlist = pd.read_html(html)
     df3 = hlist[0]
     df3.rename(columns={'Unnamed: 0':'Stats'}, inplace=True)
