@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import RidgeCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, cross_validate
 from sklearn.preprocessing import StandardScaler
 
 from sklearn.linear_model import RidgeCV
@@ -95,20 +95,22 @@ def assess_model_poly(df, x_cols, target, degree, print_res=True):
     rs = []
     mses = []
 
-    for train_idxs, test_idxs in kf.split(df):
-        X_train = df.loc[train_idxs][x_cols]
-        y_train = df.loc[train_idxs][target]
-        X_test = df.loc[test_idxs][x_cols]
-        y_test = df.loc[test_idxs][target]
 
-        model.fit(X_train, y_train)
-
-        rs.append(model.score(X_test, y_test))
-        mses.append(mean_squared_error(y_test, model.predict(X_test)))
-    if print_res:
-        print (rs)
-        print (mses)
-    return [np.mean(rs), np.mean(mses)]
+    cross_validate(model, X, y, cv=5, )
+    # for train_idxs, test_idxs in kf.split(df):
+    #     X_train = df.loc[train_idxs][x_cols]
+    #     y_train = df.loc[train_idxs][target]
+    #     X_test = df.loc[test_idxs][x_cols]
+    #     y_test = df.loc[test_idxs][target]
+    #
+    #     model.fit(X_train, y_train)
+    #
+    #     rs.append(model.score(X_test, y_test))
+    #     mses.append(mean_squared_error(y_test, model.predict(X_test)))
+    # if print_res:
+    #     print (f'R2: {rs}')
+    #     print (f'MSE: {mses}')
+    # return [np.mean(rs), np.mean(mses)]
 
 
 def assess_model_lassocv(df, x_cols, target, degree, return_coefs=False, print_res=True):
